@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tipo — Minimal Text Editor</title>
+  <meta name="description" content="Tipo is a simple, minimalist web-based text editor in a single HTML file." />
+  <style>
+    :root {
+      --bg: #f8fbff;
+      --fg: #0b2a4a;
+      --muted: #6e87a0;
+      --primary: #2563eb;
+      --primary-500: #3b82f6;
+      --primary-400: #60a5fa;
+      --ring: rgba(37, 99, 235, 0.25);
+      --panel: rgba(255,255,255,0.75);
+      --panel-border: rgba(37, 99, 235, 0.15);
+      --shadow: 0 10px 30px rgba(37, 99, 235, 0.12);
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--fg);
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 40%, #bfdbfe 100%);
+      display: grid;
+      place-items: center;
+      min-height: 100dvh; /* better on mobile */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    .shell {
+      width: min(1100px, 92vw);
+      height: min(720px, 86vh);
+      background: var(--panel);
+      backdrop-filter: saturate(140%) blur(10px);
+      border: 1px solid var(--panel-border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.65));
+      border-bottom: 1px solid var(--panel-border);
+      border-top-right-radius: 22px;
+      border-top-left-radius: 22px;
+      flex-wrap: wrap; /* allow wrapping on narrow screens */
+    }
+
+    .filename {
+      flex: 1 1 240px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 10px 12px; /* larger touch target */
+      min-width: 0; /* let it shrink if needed */
+      font-size: 16px; /* prevent iOS zoom */
+    }
+
+    .btn {
+      padding: 10px 14px; /* larger touch target */
+      margin-left: 4px;
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      cursor: pointer;
+      background: white;
+      flex-shrink: 0;
+      font-size: 16px; /* prevent iOS zoom */
+    }
+
+    .editor-wrap {
+      position: relative;
+      padding: 14px;
+      height: 100%;
+    }
+
+    .editor {
+      width: 100%;
+      height: 100%;
+      resize: none;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      border: 1px solid var(--panel-border);
+      background: white;
+      border-radius: 16px;
+      padding: 18px;
+      font: 500 16px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color: #0b1b2d;
+      box-shadow: inset 0 2px 10px rgba(2, 6, 23, 0.03);
+      box-sizing: border-box;
+    }
+
+    .statusbar {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-top: 1px solid var(--panel-border);
+      background: linear-gradient(0deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6));
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom-right-radius: 22px;
+      border-bottom-left-radius: 22px;
+    }
+
+    /* ===== Mobile tweaks ===== */
+    @media (max-width: 640px) {
+      body { background: #eaf2ff; }
+      .shell {
+        width: 100vw; height: 100dvh; border-radius: 0; /* full-bleed app */
+        box-shadow: none; border-left: 0; border-right: 0;
+      }
+      .topbar { gap: 8px; padding: 10px 12px; border-radius: 0; }
+      .filename { flex: 1 1 100%; order: 1; margin: 0; }
+      .btn { order: 2; margin-left: 0; }
+      .editor-wrap { padding: 10px; }
+      .editor { font-size: 15px; padding: 14px; border-radius: 12px; }
+      .statusbar { padding: 8px 12px; border-radius: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <input id="filename" class="filename" type="text" value="untitled.txt" />
+      <input id="file-input" type="file" accept=".txt" hidden />
+      <button id="btn-open" class="btn">Open</button>
+      <button id="btn-save" class="btn">Save</button>
+      <button id="btn-clear" class="btn">New</button>
+    </header>
+    <section class="editor-wrap">
+      <textarea id="editor" class="editor" placeholder="Start typing…"></textarea>
+    </section>
+    <footer class="statusbar">
+      <div id="status"></div>
+    </footer>
+  </main>
+  <script>
+    const editor = document.getElementById('editor');
+    const filename = document.getElementById('filename');
+    const btnSave = document.getElementById('btn-save');
+    const btnClear = document.getElementById('btn-clear');
+    const btnOpen = document.getElementById('btn-open');
+    const fileInput = document.getElementById('file-input');
+
+    function downloadText(name, content) {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name || 'untitled.txt';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    btnSave.addEventListener('click', () => {
+      const name = (filename.value || 'untitled.txt').trim();
+      downloadText(name, editor.value);
+    });
+
+    btnOpen.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        editor.value = e.target.result;
+        filename.value = file.name;
+      };
+      reader.readAsText(file);
+    });
+
+    btnClear.addEventListener('click', () => {
+      if (editor.value.trim() === '' || confirm('Clear the editor? This cannot be undone.')) {
+        editor.value = '';
+        editor.focus();
+      }
+    });
+
+    // Ensure the editor stays visible when the mobile keyboard opens
+    // by scrolling it into view after a short delay
+    editor.addEventListener('focus', () => {
+      setTimeout(() => editor.scrollIntoView({ block: 'nearest' }), 250);
+    });
+
+    setTimeout(() => editor.focus(), 200);
+  </script>
+</body>
+</html>
